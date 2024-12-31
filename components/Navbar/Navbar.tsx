@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search } from "lucide-react";
-import styles from "../../styles/bubble.module.css";
+import { Info, Search } from "lucide-react";
 import axios from "axios";
+import InfoCard from "../InfoCard/InfoCard";
 
 // Define interfaces matching the API response
 interface TokenMetadata {
@@ -15,7 +15,7 @@ interface TokenMetadata {
   id: string;
 }
 
-interface Token {
+export interface Token {
   token_address: string;
   name: string;
   symbol: string;
@@ -32,7 +32,7 @@ interface Token {
   telegram: string;
 }
 
-interface APIResponse {
+export interface APIResponse {
   total: number;
   data: Token[];
 }
@@ -42,6 +42,7 @@ const Navbar = () => {
   const [tokensData, setTokensData] = useState<APIResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showTokenOptions, setShowTokenOptions] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
 
   const timeFilters = [
     "Hour",
@@ -63,7 +64,7 @@ const Navbar = () => {
               sort: "market_cap_sui",
               completed: false,
               page: 1,
-              pageSize: 24,
+              pageSize: 10, // 24 data at once
               direction: "desc",
             },
           }
@@ -85,6 +86,9 @@ const Navbar = () => {
         .includes(searchQuery.toLowerCase())
     ) || [];
 
+  const closeModal = () => {
+    setSelectedToken(null);
+  };
   return (
     <div className="bg-gray-800">
       {/* Navbar */}
@@ -131,6 +135,7 @@ const Navbar = () => {
                           onClick={() => {
                             setSearchQuery(token.token_metadata.name);
                             setShowTokenOptions(false);
+                            setSelectedToken(token);
                           }}
                         >
                           <div className="flex items-center space-x-3">
@@ -167,7 +172,7 @@ const Navbar = () => {
           {timeFilters.map((period) => (
             <button
               key={period}
-              onClick={() => setSelectedFilter(period)}
+              // onClick={() => setSelectedFilter(period)}
               className={`px-4 py-2 rounded-lg text-white transition-colors border border-green-400
                 ${
                   period === selectedFilter
@@ -180,13 +185,31 @@ const Navbar = () => {
           ))}
         </div>
       </div>
-
-      {/* Click outside handler div */}
-      {showTokenOptions && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowTokenOptions(false)}
-        />
+      {/* InfoCard Modal */}
+      {selectedToken && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg w-[600px] relative">
+            <div
+              className="absolute top-2 right-2 text-white cursor-pointer"
+              onClick={closeModal} // Close the modal on click
+            >
+              X
+            </div>
+            <InfoCard
+              name={selectedToken.token_metadata.name}
+              symbol={selectedToken.token_metadata.symbol}
+              description={selectedToken.description}
+              iconUrl={selectedToken.token_metadata.iconUrl}
+              marketCapUsd={selectedToken.market_cap_usd}
+              marketCapSui={selectedToken.market_cap_sui}
+              priceUsd={selectedToken.token_price_usd}
+              priceSui={selectedToken.token_price_sui}
+              website={selectedToken.website}
+              twitter={selectedToken.twitter}
+              telegram={selectedToken.telegram}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

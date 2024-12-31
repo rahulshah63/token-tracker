@@ -2,6 +2,8 @@
 import { useEffect, useState, useRef, MouseEvent } from "react";
 import styles from "../styles/bubble.module.css";
 import Navbar from "@/components/Navbar/Navbar";
+import axios from "axios";
+import { APIResponse } from "@/components/Navbar/Navbar";
 
 interface IBubble {
   id: number;
@@ -11,8 +13,18 @@ interface IBubble {
   velocity: { x: number; y: number };
   background: string;
   hover?: boolean;
-  dragged?: boolean; // Track if bubble is being dragged
+  dragged?: boolean;
+  priceChange?: number;
+  tokenName?: string;
 }
+
+const getBackgroundColor = (priceChange: number) => {
+  if (priceChange > 0) {
+    return `green`;
+  } else {
+    return `red`;
+  }
+};
 
 // Helper function to generate random values within a range
 const getRandom = (min: number, max: number) =>
@@ -28,6 +40,29 @@ export default function BubblePage() {
   const [bubbles, setBubbles] = useState<IBubble[]>([]); // State to store the list of bubbles
   const activeBubbleRef = useRef<number | null>(null); // Track the currently dragged bubble
   const isDraggingRef = useRef<boolean>(false); // Track if dragging is happening
+  const [tokensData, setTokensData] = useState<APIResponse | null>(null);
+
+  const fetchTokens = async () => {
+    try {
+      const response = await axios.get<APIResponse>(
+        "https://api.turbos.finance/fun/pools",
+        {
+          params: {
+            // search: searchQuery,
+            sort: "market_cap_sui",
+            completed: false,
+            page: 1,
+            pageSize: 100, // 24 data at once
+            direction: "desc",
+          },
+        }
+      );
+
+      setTokensData(response.data);
+    } catch (error) {
+      console.error("Error fetching tokens:", error);
+    }
+  };
 
   const updatePhysics = () => {
     setBubbles((prevBubbles) => {
@@ -187,55 +222,120 @@ export default function BubblePage() {
   };
 
   useEffect(() => {
-    const BUBBLE_COUNT = 20; // Total number of bubbles to create
-    const containerWidth = containerRef.current?.clientWidth ?? 800; // Width of the container
-    const containerHeight = containerRef.current?.clientHeight ?? 600; // Height of the container
-    const maxSize =
-      Math.min(containerWidth, containerHeight) / Math.sqrt(BUBBLE_COUNT); // Dynamically adjust max size
-    const minSize = maxSize * 0.6; // Adjust minimum size based on max size
+    fetchTokens();
+  }, []);
 
-    // Create bubble objects with randomized properties
-    const newBubbles = Array.from({ length: BUBBLE_COUNT }).map((_, i) => ({
-      id: i, // Unique identifier for each bubble
-      size: getRandom(minSize, maxSize), // Dynamic size calculation
-      x: getRandom(0, containerWidth - maxSize), // Random x-coordinate within the container
-      y: getRandom(0, containerHeight - maxSize), // Random y-coordinate within the container
-      velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) }, // Random initial velocity
-      background: `radial-gradient(circle, rgba(255, 255, 255, 0.7), hsl(${getRandom(
-        0,
-        360
-      )}, 70%, 70%))`, // Random gradient background
-    }));
+  useEffect(() => {
+    if (tokensData == null) return;
+
+    const containerWidth = containerRef.current?.clientWidth ?? 800;
+    const containerHeight = containerRef.current?.clientHeight ?? 600;
+
+    // Calculate sizes based on market cap
+    const maxMarketCap = Math.max(
+      ...tokensData?.data.map((t) => t.market_cap_sui)
+    );
+    const minSize = 60;
+    const maxSize = 120;
+
+    const newBubbles = tokensData?.data.map((token, i) => {
+      // Calculate 24h price change using market cap
+      const priceChange =
+        (token.market_cap_sui / token.volume_24h_sui - 1) * 100;
+
+      return {
+        id: i,
+        size:
+          minSize + (token.market_cap_sui / maxMarketCap) * (maxSize - minSize),
+        x: getRandom(0, containerWidth - maxSize),
+        y: getRandom(0, containerHeight - maxSize),
+        velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) },
+        background: getBackgroundColor(priceChange),
+        priceChange: priceChange,
+      };
+    });
 
     setBubbles(newBubbles);
 
-    // Periodically update physics
-    const interval = setInterval(updatePhysics, 48); // Run update every 48ms (20 FPS)
+    const interval = setInterval(updatePhysics, 48);
     return () => clearInterval(interval);
-  }, []);
+  }, [tokensData]);
+
+  // useEffect(() => {
+  //   const BUBBLE_COUNT = 20; // Total number of bubbles to create
+  //   const containerWidth = containerRef.current?.clientWidth ?? 800; // Width of the container
+  //   const containerHeight = containerRef.current?.clientHeight ?? 600; // Height of the container
+  //   const maxSize =
+  //     Math.min(containerWidth, containerHeight) / Math.sqrt(BUBBLE_COUNT); // Dynamically adjust max size
+  //   const minSize = maxSize * 0.6; // Adjust minimum size based on max size
+
+  //   // Create bubble objects with randomized properties
+  //   const newBubbles = Array.from({ length: BUBBLE_COUNT }).map((_, i) => ({
+  //     id: i, // Unique identifier for each bubble
+  //     size: getRandom(minSize, maxSize), // Dynamic size calculation
+  //     x: getRandom(0, containerWidth - maxSize), // Random x-coordinate within the container
+  //     y: getRandom(0, containerHeight - maxSize), // Random y-coordinate within the container
+  //     velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) }, // Random initial velocity
+  //     background: `radial-gradient(circle, rgba(255, 255, 255, 0.7), hsl(${getRandom(
+  //       0,
+  //       360
+  //     )}, 70%, 70%))`, // Random gradient background
+  //   }));
+
+  //   setBubbles(newBubbles);
+
+  //   // Periodically update physics
+  //   const interval = setInterval(updatePhysics, 48); // Run update every 48ms (20 FPS)
+  //   return () => clearInterval(interval);
+  // }, []);
 
   return (
     <>
       <Navbar />
       <div ref={containerRef} className={styles.container}>
-        {bubbles.map((bubble) => (
-          <div
-            key={bubble.id}
-            className={styles.bubble}
-            style={{
-              width: bubble.size,
-              height: bubble.size,
-              left: bubble.x,
-              top: bubble.y,
-              background: bubble.background,
-              border: bubble.hover ? "2px solid yellow" : "none",
-            }}
-            onMouseDown={(e) => handleMouseDown(e, bubble.id)} // Attach drag functionality
-            onMouseEnter={() => handleMouseEnter(bubble.id)}
-            onMouseLeave={() => handleMouseLeave(bubble.id)}
-            onClick={() => handleClick(bubble.id)} // Only trigger if not dragging
-          />
-        ))}
+        {bubbles.map((bubble, idx) => {
+          const token = tokensData?.data[idx]; // Retrieve the token associated with the bubble
+
+          return (
+            <div
+              key={bubble.id}
+              className={styles.bubble}
+              style={{
+                width: bubble.size,
+                height: bubble.size,
+                left: bubble.x,
+                top: bubble.y,
+                background: bubble.background,
+                border: bubble.hover ? "2px solid yellow" : "none",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                color: "white",
+                fontSize: `${bubble.size * 0.2}px`,
+                fontWeight: "bold",
+
+                flexDirection: "column",
+              }}
+              onMouseDown={(e) => handleMouseDown(e, bubble.id)}
+              onMouseEnter={() => handleMouseEnter(bubble.id)}
+              onMouseLeave={() => handleMouseLeave(bubble.id)}
+              onClick={() => handleClick(bubble.id)}
+            >
+              {/* Display the token's image */}
+              {token?.token_metadata.iconUrl && (
+                <img
+                  src={token.token_metadata.iconUrl}
+                  alt={token?.symbol}
+                  style={{ width: "30%", height: "auto", marginBottom: "5px" }}
+                />
+              )}
+
+              <span className="text-[20px]">{token?.symbol.slice(0,3)}</span>
+
+              <div className="text-[10px]">{bubble.priceChange?.toFixed(2)}%</div>
+            </div>
+          );
+        })}
       </div>
     </>
   );

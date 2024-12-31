@@ -77,9 +77,12 @@ const HomePage = () => {
   }, [searchQuery]);
 
   // Filter tokens based on search query
-  const filteredTokens = tokensData?.data.filter(token => 
-    token.token_metadata.name.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredTokens =
+    tokensData?.data.filter((token) =>
+      token.token_metadata.name
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
+    ) || [];
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -116,7 +119,7 @@ const HomePage = () => {
                 className="w-full bg-gray-700 text-white pl-10 pr-4 py-2 rounded-lg 
                          border border-gray-600 focus:outline-none focus:border-green-500"
               />
-              
+
               {/* Token Options Dropdown */}
               {showTokenOptions && (
                 <div className="absolute w-full mt-2 bg-gray-800 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
@@ -133,9 +136,9 @@ const HomePage = () => {
                         >
                           <div className="flex items-center space-x-3">
                             {token.token_metadata.iconUrl && (
-                              <img 
-                                src={token.token_metadata.iconUrl} 
-                                alt={token.name} 
+                              <img
+                                src={token.token_metadata.iconUrl}
+                                alt={token.name}
                                 className="w-6 h-6 rounded-full"
                               />
                             )}
@@ -148,7 +151,9 @@ const HomePage = () => {
                       ))}
                     </ul>
                   ) : (
-                    <div className="px-4 py-2 text-gray-400">No tokens found</div>
+                    <div className="px-4 py-2 text-gray-400">
+                      No tokens found
+                    </div>
                   )}
                 </div>
               )}
@@ -179,7 +184,7 @@ const HomePage = () => {
 
       {/* Click outside handler div */}
       {showTokenOptions && (
-        <div 
+        <div
           className="fixed inset-0 z-40"
           onClick={() => setShowTokenOptions(false)}
         />

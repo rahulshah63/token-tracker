@@ -1,196 +1,242 @@
 "use client";
+import { useEffect, useState, useRef, MouseEvent } from "react";
+import styles from "../styles/bubble.module.css";
+import Navbar from "@/components/Navbar/Navbar";
 
-import React, { useState, useEffect } from "react";
-import { Search, Settings, Menu } from "lucide-react";
-import axios from "axios";
-
-// Define interfaces matching the API response
-interface TokenMetadata {
-  decimals: number;
-  name: string;
-  symbol: string;
-  description: string;
-  iconUrl: string;
-  id: string;
+interface IBubble {
+  id: number;
+  size: number;
+  x: number;
+  y: number;
+  velocity: { x: number; y: number };
+  background: string;
+  hover?: boolean;
+  dragged?: boolean; // Track if bubble is being dragged
 }
 
-interface Token {
-  token_address: string;
-  name: string;
-  symbol: string;
-  token_metadata: TokenMetadata;
-  description: string;
-  market_cap_usd: number;
-  market_cap_sui: number;
-  volume_24h_usd: number;
-  volume_24h_sui: number;
-  token_price_usd: number;
-  token_price_sui: number;
-  website: string;
-  twitter: string;
-  telegram: string;
-}
+// Helper function to generate random values within a range
+const getRandom = (min: number, max: number) =>
+  Math.random() * (max - min) + min;
 
-interface APIResponse {
-  total: number;
-  data: Token[];
-}
+const calculateDistance = (x1: number, y1: number, x2: number, y2: number) =>
+  Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
-const HomePage = () => {
-  const [selectedFilter, setSelectedFilter] = useState("Day");
-  const [tokensData, setTokensData] = useState<APIResponse | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showTokenOptions, setShowTokenOptions] = useState(false);
+const maxOverlap = 0.1; // 10% overlap tolerance
 
-  const timeFilters = [
-    "Hour",
-    "Day",
-    "Week",
-    "Month",
-    "Year",
-    "Market Cap & Day",
-  ];
+export default function BubblePage() {
+  const containerRef = useRef<HTMLDivElement>(null); // Ref to the container element
+  const [bubbles, setBubbles] = useState<IBubble[]>([]); // State to store the list of bubbles
+  const activeBubbleRef = useRef<number | null>(null); // Track the currently dragged bubble
+  const isDraggingRef = useRef<boolean>(false); // Track if dragging is happening
 
-  useEffect(() => {
-    const fetchTokens = async () => {
-      try {
-        const response = await axios.get<APIResponse>(
-          "https://api.turbos.finance/fun/pools",
-          {
-            params: {
-              search: searchQuery,
-              sort: "market_cap_sui",
-              completed: false,
-              page: 1,
-              pageSize: 24,
-              direction: "desc",
-            },
-          }
+  const updatePhysics = () => {
+    setBubbles((prevBubbles) => {
+      const newBubbles = [...prevBubbles];
+
+      for (let i = 0; i < newBubbles.length; i++) {
+        const bubble = newBubbles[i];
+        if (activeBubbleRef.current === bubble.id) continue; // Skip active bubble
+
+        const container = containerRef.current!;
+        let newX = bubble.x + bubble.velocity.x; // Update x-position based on velocity
+        let newY = bubble.y + bubble.velocity.y; // Update y-position based on velocity
+
+        // Reverse direction if the bubble hits the left or right boundaries
+        if (newX <= 0 || newX + bubble.size >= container.clientWidth) {
+          bubble.velocity.x *= -1;
+        }
+
+        // Reverse direction if the bubble hits the top or bottom boundaries
+        if (newY <= 0 || newY + bubble.size >= container.clientHeight) {
+          bubble.velocity.y *= -1;
+        }
+
+        newX = Math.min(Math.max(newX, 0), container.clientWidth - bubble.size);
+        newY = Math.min(
+          Math.max(newY, 0),
+          container.clientHeight - bubble.size
         );
-        setTokensData(response.data);
-      } catch (error) {
-        console.error("Error fetching tokens:", error);
+
+        bubble.x = newX;
+        bubble.y = newY;
+
+        // Prevent overlap, apply gentle movements if overlap occurs
+        for (let j = 0; j < newBubbles.length; j++) {
+          if (i === j) continue;
+          const otherBubble = newBubbles[j];
+          const distance = calculateDistance(
+            bubble.x + bubble.size / 2,
+            bubble.y + bubble.size / 2,
+            otherBubble.x + otherBubble.size / 2,
+            otherBubble.y + otherBubble.size / 2
+          );
+          const minDistance =
+            (bubble.size + otherBubble.size) * ((1 - maxOverlap) / 2);
+
+          if (distance < minDistance) {
+            const angle = Math.atan2(
+              bubble.y - otherBubble.y,
+              bubble.x - otherBubble.x
+            );
+            const moveX = Math.cos(angle) * (minDistance - distance) * 0.3; // Gentle movement
+            const moveY = Math.sin(angle) * (minDistance - distance) * 0.3; // Gentle movement
+            bubble.x += moveX;
+            bubble.y += moveY;
+          }
+        }
       }
+
+      return newBubbles;
+    });
+  };
+
+  const handleMouseDown = (
+    e: MouseEvent<HTMLDivElement, globalThis.MouseEvent>,
+    bubbleId: number | null
+  ) => {
+    if (activeBubbleRef.current !== null) return; // Prevent starting drag on other bubble during active drag
+
+    isDraggingRef.current = true;
+    activeBubbleRef.current = bubbleId; // Set the active bubble
+    const container = containerRef.current;
+    const bubbleIndex = bubbles.findIndex((b) => b.id === bubbleId);
+    const bubble = bubbles[bubbleIndex];
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialX = bubble.x;
+    const initialY = bubble.y;
+
+    const handleMouseMove = (e: { clientX: number; clientY: number }) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      setBubbles((prevBubbles) => {
+        const newBubbles = [...prevBubbles];
+        newBubbles[bubbleIndex] = {
+          ...bubble,
+          x: Math.min(
+            Math.max(initialX + deltaX, 0),
+            container!.clientWidth - bubble.size
+          ),
+          y: Math.min(
+            Math.max(initialY + deltaY, 0),
+            container!.clientHeight - bubble.size
+          ),
+        };
+
+        // Smooth movement of overlapping bubbles
+        for (let i = 0; i < newBubbles.length; i++) {
+          if (i === bubbleIndex) continue;
+          const otherBubble = newBubbles[i];
+          const distance = calculateDistance(
+            newBubbles[bubbleIndex].x + bubble.size / 2,
+            newBubbles[bubbleIndex].y + bubble.size / 2,
+            otherBubble.x + otherBubble.size / 2,
+            otherBubble.y + otherBubble.size / 2
+          );
+          const minDistance = (bubble.size + otherBubble.size) * 0.5;
+
+          if (distance < minDistance) {
+            const angle = Math.atan2(
+              newBubbles[bubbleIndex].y - otherBubble.y,
+              newBubbles[bubbleIndex].x - otherBubble.x
+            );
+            const moveX = Math.cos(angle) * (minDistance - distance) * 0.1;
+            const moveY = Math.sin(angle) * (minDistance - distance) * 0.1;
+            otherBubble.x -= moveX;
+            otherBubble.y -= moveY;
+          }
+        }
+
+        return newBubbles;
+      });
     };
 
-    fetchTokens();
-  }, [searchQuery]);
+    const handleMouseUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      activeBubbleRef.current = null; // Clear active bubble
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
 
-  // Filter tokens based on search query
-  const filteredTokens =
-    tokensData?.data.filter((token) =>
-      token.token_metadata.name
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase())
-    ) || [];
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleMouseEnter = (bubbleId: number) => {
+    setBubbles((prevBubbles) =>
+      prevBubbles.map((bubble) =>
+        bubble.id === bubbleId ? { ...bubble, hover: true } : bubble
+      )
+    );
+  };
+
+  const handleMouseLeave = (bubbleId: number) => {
+    setBubbles((prevBubbles) =>
+      prevBubbles.map((bubble) =>
+        bubble.id === bubbleId ? { ...bubble, hover: false } : bubble
+      )
+    );
+  };
+
+  const handleClick = (bubbleId: number) => {
+    if (!isDraggingRef.current) {
+      alert(`Bubble ${bubbleId + 1} clicked!`);
+    }
+  };
+
+  useEffect(() => {
+    const BUBBLE_COUNT = 20; // Total number of bubbles to create
+    const containerWidth = containerRef.current?.clientWidth ?? 800; // Width of the container
+    const containerHeight = containerRef.current?.clientHeight ?? 600; // Height of the container
+    const maxSize =
+      Math.min(containerWidth, containerHeight) / Math.sqrt(BUBBLE_COUNT); // Dynamically adjust max size
+    const minSize = maxSize * 0.6; // Adjust minimum size based on max size
+
+    // Create bubble objects with randomized properties
+    const newBubbles = Array.from({ length: BUBBLE_COUNT }).map((_, i) => ({
+      id: i, // Unique identifier for each bubble
+      size: getRandom(minSize, maxSize), // Dynamic size calculation
+      x: getRandom(0, containerWidth - maxSize), // Random x-coordinate within the container
+      y: getRandom(0, containerHeight - maxSize), // Random y-coordinate within the container
+      velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) }, // Random initial velocity
+      background: `radial-gradient(circle, rgba(255, 255, 255, 0.7), hsl(${getRandom(
+        0,
+        360
+      )}, 70%, 70%))`, // Random gradient background
+    }));
+
+    setBubbles(newBubbles);
+
+    // Periodically update physics
+    const interval = setInterval(updatePhysics, 48); // Run update every 48ms (20 FPS)
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Navbar */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Logo and Brand */}
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
-                  <div className="w-6 h-6 bg-green-500 rounded-full"></div>
-                </div>
-              </div>
-              <span className="text-white text-2xl font-bold">
-                BANTER BUBBLES
-              </span>
-            </div>
-          </div>
-
-          {/* Search Bar */}
-          <div className="flex-1 max-w-2xl mx-8">
-            <div className="relative">
-              <Search
-                className="absolute left-3 top-2.5 text-gray-400"
-                size={20}
-              />
-              <input
-                type="text"
-                placeholder="Search cryptocurrency"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setShowTokenOptions(true)}
-                className="w-full bg-gray-700 text-white pl-10 pr-4 py-2 rounded-lg 
-                         border border-gray-600 focus:outline-none focus:border-green-500"
-              />
-
-              {/* Token Options Dropdown */}
-              {showTokenOptions && (
-                <div className="absolute w-full mt-2 bg-gray-800 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                  {filteredTokens.length > 0 ? (
-                    <ul className="py-2">
-                      {filteredTokens.map((token) => (
-                        <li
-                          key={token.token_address}
-                          className="px-4 py-2 hover:bg-gray-700 cursor-pointer text-white flex items-center justify-between"
-                          onClick={() => {
-                            setSearchQuery(token.token_metadata.name);
-                            setShowTokenOptions(false);
-                          }}
-                        >
-                          <div className="flex items-center space-x-3">
-                            {token.token_metadata.iconUrl && (
-                              <img
-                                src={token.token_metadata.iconUrl}
-                                alt={token.name}
-                                className="w-6 h-6 rounded-full"
-                              />
-                            )}
-                            <span>{token.token_metadata.name}</span>
-                          </div>
-                          <span className="text-gray-400 text-sm">
-                            {token.token_metadata.symbol}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="px-4 py-2 text-gray-400">
-                      No tokens found
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Time Period Filters */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="flex space-x-2">
-          {timeFilters.map((period) => (
-            <button
-              key={period}
-              onClick={() => setSelectedFilter(period)}
-              className={`px-4 py-2 rounded-lg text-white transition-colors border border-green-400
-                ${
-                  period === selectedFilter
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-gray-700 hover:bg-gray-600"
-                }`}
-            >
-              {period}
-            </button>
-          ))}
-        </div>
+    <>
+      <Navbar />
+      <div ref={containerRef} className={styles.container}>
+        {bubbles.map((bubble) => (
+          <div
+            key={bubble.id}
+            className={styles.bubble}
+            style={{
+              width: bubble.size,
+              height: bubble.size,
+              left: bubble.x,
+              top: bubble.y,
+              background: bubble.background,
+              border: bubble.hover ? "2px solid yellow" : "none",
+            }}
+            onMouseDown={(e) => handleMouseDown(e, bubble.id)} // Attach drag functionality
+            onMouseEnter={() => handleMouseEnter(bubble.id)}
+            onMouseLeave={() => handleMouseLeave(bubble.id)}
+            onClick={() => handleClick(bubble.id)} // Only trigger if not dragging
+          />
+        ))}
       </div>
-
-      {/* Click outside handler div */}
-      {showTokenOptions && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowTokenOptions(false)}
-        />
-      )}
-    </div>
+    </>
   );
-};
-
-export default HomePage;
+}

@@ -2,8 +2,11 @@
 import { useEffect, useState, useRef, MouseEvent } from "react";
 import styles from "../styles/bubble.module.css";
 import Navbar from "@/components/Navbar/Navbar";
+import { Token } from "@/components/providers/TokenContext.provider";
 import axios from "axios";
-import { APIResponse } from "@/components/Navbar/Navbar";
+import { useTokenContext } from "@/components/providers/TokenContext.provider";
+import Image from "next/image";
+import InfoCard from "@/components/InfoCard/InfoCard";
 
 interface IBubble {
   id: number;
@@ -20,12 +23,15 @@ interface IBubble {
 
 const getBackgroundColor = (priceChange: number) => {
   if (priceChange > 0) {
-    return `green`;
+    return `linear-gradient(135deg, 
+      rgba(0, 255, 95, 0.95) 0%,
+      rgba(0, 200, 80, 0.85) 100%)`; // Bright neon green gradient
   } else {
-    return `red`;
+    return `linear-gradient(135deg, 
+      rgba(255, 0, 55, 0.95) 0%,
+      rgba(200, 0, 45, 0.85) 100%)`; // Deep crimson red gradient
   }
 };
-
 // Helper function to generate random values within a range
 const getRandom = (min: number, max: number) =>
   Math.random() * (max - min) + min;
@@ -40,29 +46,140 @@ export default function BubblePage() {
   const [bubbles, setBubbles] = useState<IBubble[]>([]); // State to store the list of bubbles
   const activeBubbleRef = useRef<number | null>(null); // Track the currently dragged bubble
   const isDraggingRef = useRef<boolean>(false); // Track if dragging is happening
-  const [tokensData, setTokensData] = useState<APIResponse | null>(null);
 
-  const fetchTokens = async () => {
-    try {
-      const response = await axios.get<APIResponse>(
-        "https://api.turbos.finance/fun/pools",
-        {
-          params: {
-            // search: searchQuery,
-            sort: "market_cap_sui",
-            completed: false,
-            page: 1,
-            pageSize: 100, // 24 data at once
-            direction: "desc",
-          },
-        }
-      );
+  const currentTimestamp = Date.now();
+  const { selectedFilter, tokensData, selectedToken, setSelectedToken } =
+    useTokenContext();
 
-      setTokensData(response.data);
-    } catch (error) {
-      console.error("Error fetching tokens:", error);
+  const [priceDataMap, setPriceDataMap] = useState<Map<string, number>>(
+    new Map()
+  );
+
+  const getTimePeriod = () => {
+    const now = new Date();
+
+    switch (selectedFilter) {
+      case "1Hour":
+        return currentTimestamp - 60 * 60 * 1000; // 1 hour ago
+      case "4Hour":
+        return currentTimestamp - 4 * 60 * 60 * 1000; // 4 hours ago
+      case "8Hour":
+        return currentTimestamp - 8 * 60 * 60 * 1000; // 8 hours ago
+      case "Day": {
+        // For day: Get previous day's midnight (e.g., if today is Thursday, get Wednesday midnight)
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(23, 59, 59, 999); // Set to 23:59:59.999 of previous day
+        console.log(yesterday, "yesterday date");
+        return yesterday.getTime();
+      }
+      case "Week": {
+        // For week: Get last Saturday's midnight
+        const lastSaturday = new Date(now);
+        const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
+        const daysToLastSaturday = (currentDay + 1) % 7; // Days to go back to reach last Saturday
+        lastSaturday.setDate(now.getDate() - daysToLastSaturday);
+        lastSaturday.setHours(23, 59, 59, 999); // Set to 23:59:59.999
+        console.log(lastSaturday, "yesterday date");
+        return lastSaturday.getTime();
+      }
+      case "Month": {
+        // For month: Get last day of previous month at midnight
+        const lastMonth = new Date(now);
+        lastMonth.setDate(0); // Go to last day of previous month
+        lastMonth.setHours(23, 59, 59, 999); // Set to 23:59:59.999
+        console.log(lastMonth, "yesterday date");
+        return lastMonth.getTime();
+      }
+      case "Year": {
+        // For year: Get December 31st of previous year at midnight
+        const lastYear = new Date(
+          now.getFullYear() - 1,
+          11,
+          31,
+          23,
+          59,
+          59,
+          999
+        );
+        console.log(lastYear, "yesterday date");
+        return lastYear.getTime();
+      }
+      default:
+        return currentTimestamp;
     }
   };
+
+  // const getStep = () => {
+  //   switch (selectedFilter) {
+  //     case "1Hour":
+  //       return "hour";
+  //     case "4Hour":
+  //       return "4hour";
+  //     case "8Hour":
+  //       return "8hour";
+
+  //     default:
+  //       return "week";
+  //   }
+  // };
+
+  const fetchPriceData = async (token: Token) => {
+    try {
+      const endpoint = token.is_completed
+        ? "https://api.turbos.finance/fun/trade/clmm/ochl"
+        : "https://api.turbos.finance/fun/trade/ochl";
+
+      const params = token.is_completed
+        ? {
+            clmmPoolId: token.clmm_pool_id,
+            start: getTimePeriod(),
+            end: currentTimestamp,
+            step: "hour", //uptoweek only
+          }
+        : {
+            tokenAddress: token.token_address,
+            start: getTimePeriod(),
+            end: currentTimestamp,
+            step: "hour", //upto week only
+          };
+
+      const response = await axios.get(endpoint, { params });
+      const data = response.data;
+
+      if (data.length > 0) {
+        const priceChange =
+          ((data[data.length - 1].close - data[0].open) / data[0].open) * 100;
+        return priceChange;
+      }
+      return 0;
+    } catch (error) {
+      console.error("Error fetching price data:", error);
+      return 0;
+    }
+  };
+
+  // const fetchTokens = async () => {
+  //   try {
+  //     const response = await axios.get<APIResponse>(
+  //       "https://api.turbos.finance/fun/pools",
+  //       {
+  //         params: {
+  //           // search: searchQuery,
+  //           sort: "market_cap_sui",
+  //           completed: false,
+  //           page: 1,
+  //           pageSize: 100, // 24 data at once
+  //           direction: "desc",
+  //         },
+  //       }
+  //     );
+
+  //     setTokensData(response.data);
+  //   } catch (error) {
+  //     console.error("Error fetching tokens:", error);
+  //   }
+  // };
 
   const updatePhysics = () => {
     setBubbles((prevBubbles) => {
@@ -217,13 +334,34 @@ export default function BubblePage() {
 
   const handleClick = (bubbleId: number) => {
     if (!isDraggingRef.current) {
-      alert(`Bubble ${bubbleId + 1} clicked!`);
+      const token = tokensData?.data[bubbleId];
+      setSelectedToken(token ?? null);
     }
   };
 
+  const closeModal = () => {
+    setSelectedToken(null);
+  };
+
   useEffect(() => {
-    fetchTokens();
-  }, []);
+    const fetchAllPriceData = async () => {
+      if (!tokensData?.data) return;
+
+      const newPriceDataMap = new Map<string, number>();
+
+      await Promise.all(
+        tokensData.data.map(async (token) => {
+          const priceChange = await fetchPriceData(token);
+
+          newPriceDataMap.set(token.token_address, priceChange);
+        })
+      );
+
+      setPriceDataMap(newPriceDataMap);
+    };
+
+    fetchAllPriceData();
+  }, [tokensData, selectedFilter]);
 
   useEffect(() => {
     if (tokensData == null) return;
@@ -235,31 +373,36 @@ export default function BubblePage() {
     const maxMarketCap = Math.max(
       ...tokensData?.data.map((t) => t.market_cap_sui)
     );
-    const minSize = 60;
-    const maxSize = 120;
+    const minSize = 70;
+    const maxSize = 200;
 
-    const newBubbles = tokensData?.data.map((token, i) => {
-      // Calculate 24h price change using market cap
-      const priceChange =
-        (token.market_cap_sui / token.volume_24h_sui - 1) * 100;
+    const newBubbles = tokensData?.data
+      .filter((token) => {
+        const priceChange = priceDataMap.get(token.token_address) || 0;
+        return priceChange !== 0;
+      })
 
-      return {
-        id: i,
-        size:
-          minSize + (token.market_cap_sui / maxMarketCap) * (maxSize - minSize),
-        x: getRandom(0, containerWidth - maxSize),
-        y: getRandom(0, containerHeight - maxSize),
-        velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) },
-        background: getBackgroundColor(priceChange),
-        priceChange: priceChange,
-      };
-    });
+      .map((token, i) => {
+        const priceChange = priceDataMap.get(token.token_address) || 0;
+
+        return {
+          id: i,
+          size:
+            minSize +
+            (token.market_cap_sui / maxMarketCap) * (maxSize - minSize),
+          x: getRandom(0, containerWidth - maxSize),
+          y: getRandom(0, containerHeight - maxSize),
+          velocity: { x: getRandom(-0.5, 0.5), y: getRandom(-0.5, 0.5) },
+          background: getBackgroundColor(priceChange),
+          priceChange: priceChange,
+        };
+      });
 
     setBubbles(newBubbles);
 
     const interval = setInterval(updatePhysics, 48);
     return () => clearInterval(interval);
-  }, [tokensData]);
+  }, [tokensData, priceDataMap, selectedFilter]);
 
   // useEffect(() => {
   //   const BUBBLE_COUNT = 20; // Total number of bubbles to create
@@ -323,19 +466,53 @@ export default function BubblePage() {
             >
               {/* Display the token's image */}
               {token?.token_metadata.iconUrl && (
-                <img
+                <Image
                   src={token.token_metadata.iconUrl}
                   alt={token?.symbol}
-                  style={{ width: "30%", height: "auto", marginBottom: "5px" }}
+                  width={30}
+                  height={30}
+                  style={{
+                    width: "30%",
+                    height: "auto",
+                    marginBottom: "5px",
+                  }}
                 />
               )}
 
-              <span className="text-[20px]">{token?.symbol.slice(0,3)}</span>
+              <span className="text-[20px]">{token?.symbol}</span>
 
-              <div className="text-[10px]">{bubble.priceChange?.toFixed(2)}%</div>
+              <div className="text-[10px]">
+                {bubble.priceChange?.toFixed(3)}%
+              </div>
             </div>
           );
         })}
+
+        {selectedToken && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 p-6 rounded-lg w-[600px] relative">
+              <div
+                className="absolute top-2 right-2 text-white cursor-pointer"
+                onClick={closeModal} // Close the modal on click
+              >
+                X
+              </div>
+              <InfoCard
+                name={selectedToken.token_metadata.name}
+                symbol={selectedToken.token_metadata.symbol}
+                description={selectedToken.description}
+                iconUrl={selectedToken.token_metadata.iconUrl}
+                marketCapUsd={selectedToken.market_cap_usd}
+                marketCapSui={selectedToken.market_cap_sui}
+                priceUsd={selectedToken.token_price_usd}
+                priceSui={selectedToken.token_price_sui}
+                website={selectedToken.website}
+                twitter={selectedToken.twitter}
+                telegram={selectedToken.telegram}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

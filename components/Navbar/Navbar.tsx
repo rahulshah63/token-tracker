@@ -1,57 +1,45 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Info, Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import axios from "axios";
 import InfoCard from "../InfoCard/InfoCard";
-
+import {
+  APIResponse,
+  useTokenContext,
+} from "../providers/TokenContext.provider";
+import Image from "next/image";
 // Define interfaces matching the API response
-interface TokenMetadata {
-  decimals: number;
-  name: string;
-  symbol: string;
-  description: string;
-  iconUrl: string;
-  id: string;
-}
-
-export interface Token {
-  token_address: string;
-  name: string;
-  symbol: string;
-  token_metadata: TokenMetadata;
-  description: string;
-  market_cap_usd: number;
-  market_cap_sui: number;
-  volume_24h_usd: number;
-  volume_24h_sui: number;
-  token_price_usd: number;
-  token_price_sui: number;
-  website: string;
-  twitter: string;
-  telegram: string;
-}
-
-export interface APIResponse {
-  total: number;
-  data: Token[];
-}
 
 const Navbar = () => {
-  const [selectedFilter, setSelectedFilter] = useState("Day");
-  const [tokensData, setTokensData] = useState<APIResponse | null>(null);
+  const {
+    selectedFilter,
+    setSelectedFilter,
+    selectedToken,
+    setSelectedToken,
+    tokensData,
+    setTokensData,
+    isDex,
+    setIsDex,
+  } = useTokenContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showTokenOptions, setShowTokenOptions] = useState(false);
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
 
   const timeFilters = [
-    "Hour",
+    "4Hour",
+    // "8Hour",
+    "1Hour",
     "Day",
     "Week",
     "Month",
     "Year",
-    "Market Cap & Day",
+    // "Market Cap & Day",
   ];
+
+  const changeDex = () => {
+    if (isDex) setIsDex(false);
+    else setIsDex(true);
+  };
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -62,9 +50,9 @@ const Navbar = () => {
             params: {
               search: searchQuery,
               sort: "market_cap_sui",
-              completed: false,
+              completed: isDex,
               page: 1,
-              pageSize: 10, // 24 data at once
+              pageSize: 100,
               direction: "desc",
             },
           }
@@ -76,7 +64,10 @@ const Navbar = () => {
     };
 
     fetchTokens();
-  }, [searchQuery]);
+  }, [searchQuery, isDex]);
+
+  // console.log(tokensData, "tokens set");
+  console.log(selectedFilter, "selected filter");
 
   // Filter tokens based on search query
   const filteredTokens =
@@ -88,6 +79,7 @@ const Navbar = () => {
 
   const closeModal = () => {
     setSelectedToken(null);
+    setSearchQuery("");
   };
   return (
     <div className="bg-gray-800">
@@ -126,6 +118,13 @@ const Navbar = () => {
               {/* Token Options Dropdown */}
               {showTokenOptions && (
                 <div className="absolute w-full mt-2 bg-gray-800 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                  <div className="flex justify-end p-2">
+                    <X
+                      className="text-gray-400 hover:text-white cursor-pointer"
+                      size={20}
+                      onClick={() => setShowTokenOptions(false)}
+                    />
+                  </div>
                   {filteredTokens.length > 0 ? (
                     <ul className="py-2">
                       {filteredTokens.map((token) => (
@@ -140,10 +139,12 @@ const Navbar = () => {
                         >
                           <div className="flex items-center space-x-3">
                             {token.token_metadata.iconUrl && (
-                              <img
+                              <Image
                                 src={token.token_metadata.iconUrl}
                                 alt={token.name}
                                 className="w-6 h-6 rounded-full"
+                                width={30}
+                                height={30}
                               />
                             )}
                             <span>{token.token_metadata.name}</span>
@@ -172,7 +173,7 @@ const Navbar = () => {
           {timeFilters.map((period) => (
             <button
               key={period}
-              // onClick={() => setSelectedFilter(period)}
+              onClick={() => setSelectedFilter(period)}
               className={`px-4 py-2 rounded-lg text-white transition-colors border border-green-400
                 ${
                   period === selectedFilter
@@ -183,6 +184,15 @@ const Navbar = () => {
               {period}
             </button>
           ))}
+          <div
+            className={`flex px-4 py-2 rounded-lg text-white transition-colors border border-green-400 ${
+              isDex
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-gray-700 hover:bg-gray-600"
+            }`}
+          >
+            <button onClick={changeDex}>Listed on Dex</button>
+          </div>
         </div>
       </div>
       {/* InfoCard Modal */}

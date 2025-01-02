@@ -1,12 +1,6 @@
 import React from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "../ui/card";
+import Image from "next/image";
 
 interface InfoCardProps {
   name: string;
@@ -40,7 +34,13 @@ const InfoCard: React.FC<InfoCardProps> = ({
       <CardHeader>
         <div className="flex items-center space-x-4">
           {iconUrl && (
-            <img src={iconUrl} alt={name} className="w-10 h-10 rounded-full" />
+            <Image
+              src={iconUrl}
+              alt={name}
+              width={10}
+              height={10}
+              className="w-10 h-10 rounded-full"
+            />
           )}
           <div>
             <h3 className="text-lg font-bold">{name}</h3>

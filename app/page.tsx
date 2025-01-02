@@ -490,7 +490,7 @@ export default function BubblePage() {
 
         {selectedToken && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 p-6 rounded-lg w-[600px] relative">
+            <div className=" p-6 rounded-lg w-[600px] relative">
               <div
                 className="absolute top-2 right-2 text-white cursor-pointer"
                 onClick={closeModal} // Close the modal on click
@@ -509,6 +509,9 @@ export default function BubblePage() {
                 website={selectedToken.website}
                 twitter={selectedToken.twitter}
                 telegram={selectedToken.telegram}
+                volume24h_sui={selectedToken.volume_24h_sui}
+                is_completed={selectedToken.is_completed}
+                token={selectedToken}
               />
             </div>
           </div>
